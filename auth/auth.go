@@ -1,43 +1,68 @@
 package auth
 
 import (
+	"context"
+	"fmt"
 	"time"
 
-	"github.com/golang-jwt/jwt"
+	"github.com/go-redis/redis/v8"
+	"github.com/juju/errors"
 )
 
-// Auth contains authentication settings.
+// Auth contains all tools needed to perform an authentication.
 type Auth struct {
-	secret          string
-	expireInSeconds int
+	// jwt is an instance used to generate, sign and parse jwt
+	jwt *JWTSettings
+	// rdb is a redis client
+	rdb *redis.Client
 }
 
-// New creates a new `Auth` instance with the given arguments.
-func New(secret string, expireInSeconds int) *Auth {
+// New initializes a new `Auth` instance.
+func New(jwtSett *JWTSettings, rdb *redis.Client) *Auth {
 	return &Auth{
-		secret:          secret,
-		expireInSeconds: expireInSeconds,
+		jwt: jwtSett,
+		rdb: rdb,
 	}
 }
 
-// CreateToken creates a token with the given configuration. It returns the signed
-// token as a string.
-func (a *Auth) CreateToken() (string, error) {
-	// Sets time fields
-	exp := time.Now().Add(time.Second * time.Duration(a.expireInSeconds)).Unix()
-	iat := time.Now().Unix()
-
-	// Initializes token
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"exp": exp,
-		"iat": iat,
-	})
-
-	// Signs and gets token as a string
-	tokenString, err := token.SignedString([]byte(a.secret))
+// GetTokens is used to generate a new token with the given email.
+// The generated token is signed and then cached.
+func (a *Auth) GetToken(ctx context.Context, email string) (string, error) {
+	token := a.jwt.createJWT(email)
+	signed, err := a.jwt.sign(token)
 	if err != nil {
-		return "", err
+		return "", errors.Annotatef(err, "sign token")
 	}
 
-	return tokenString, nil
+	err = a.cacheToken(ctx, token.Email, signed)
+	if err != nil {
+		return "", errors.Annotatef(err, "cache token")
+	}
+
+	return "", err
+}
+
+// ParseToken parses the signed token.
+func (a *Auth) ParseToken(signedToken string) (*JWT, error) {
+	return a.jwt.parse(signedToken)
+}
+
+// DelToken delete the cached token corresponding to the given email address.
+func (a *Auth) DelToken(ctx context.Context, email string) error {
+	return a.rdb.Del(ctx, email).Err()
+}
+
+// cacheToken sets in redis a new entry where the key is token id and the value, to signed token.
+func (a *Auth) cacheToken(ctx context.Context, email, signedToken string) error {
+	duration, err := time.ParseDuration(fmt.Sprintf("%ds", a.jwt.ExpiresInSeconds))
+	if err != nil {
+		return errors.Annotatef(err, "parse duration:")
+	}
+
+	err = a.rdb.Set(ctx, email, signedToken, duration).Err()
+	if err != nil {
+		return errors.Annotatef(err, "set token:")
+	}
+
+	return nil
 }

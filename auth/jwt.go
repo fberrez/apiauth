@@ -41,8 +41,8 @@ func NewJWTSettings(expiresInSeconds int, iss string, sub string, aud []string, 
 	}
 }
 
-// CreateJWT creates a new jwt with the given email and settings.
-func (j *JWTSettings) CreateJWT(email string) JWT {
+// createJWT creates a new jwt with the given email and settings.
+func (j *JWTSettings) createJWT(email string) JWT {
 	return JWT{
 		email,
 		jwt.RegisteredClaims{
@@ -57,14 +57,14 @@ func (j *JWTSettings) CreateJWT(email string) JWT {
 	}
 }
 
-// Sign signs the given token and returns the signed token.
-func (j *JWTSettings) Sign(jwtToSign JWT) (string, error) {
+// sign signs the given token and returns the signed token.
+func (j *JWTSettings) sign(jwtToSign JWT) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwtToSign)
 	return token.SignedString(j.Key)
 }
 
-// Parse parses the given signed token and returns a new struct containing the token data.
-func (j *JWTSettings) Parse(signedToken string) (*JWT, error) {
+// parse parses the given signed token and returns a new struct containing the token data.
+func (j *JWTSettings) parse(signedToken string) (*JWT, error) {
 	token, err := jwt.ParseWithClaims(signedToken, &JWT{}, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, errors.Errorf("Unexpected signing method, got '%v', expected 'HMAC'", token.Header["alg"])
