@@ -15,7 +15,7 @@ func NewRedis(addr, password string, ctx context.Context) (*redis.Client, error)
 		Password: password,
 	})
 
-	pong, err := client.Ping(ctx).Result()
+	_, err := client.Ping(ctx).Result()
 	if err != nil {
 		return nil, errors.Annotatef(err, "ping redis")
 	}
