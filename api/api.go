@@ -4,24 +4,34 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/fberrez/apiauth/auth"
 	"github.com/fberrez/apiauth/backend"
 	"github.com/fberrez/apiauth/models"
-	"github.com/gorilla/mux"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/jwtauth/v5"
 )
 
 type API struct {
 	auth        *auth.Auth
-	router      *mux.Router
+	router      *chi.Mux
 	accountRepo *models.AccountRepo
 }
 
 func New(ctx context.Context, authSecret string, authExpireInSeconds int) (*API, error) {
-	router := mux.NewRouter()
+	r := chi.NewRouter()
+
+	// Declares middlewares
+	r.Use(middleware.RequestID)
+	r.Use(middleware.RealIP)
+	r.Use(middleware.Logger)
+	r.Use(middleware.Recoverer)
+	r.Use(middleware.Timeout(60 * time.Second))
 
 	// Initializes dependencies
-	jwt := auth.NewJWTSettings(100, "myapp", "apiAuthentication", []string{"authenticatedUsers"}, []byte("mysecret"))
+	jwt := auth.NewJWTSettings(100, "myapp", "apiAuthentication", []string{"authenticatedUsers"}, []byte("mysecret"), []byte("myverify"))
 	redis, err := backend.NewRedis("127.0.0.1:6379", "", ctx)
 	if err != nil {
 		return nil, err
@@ -38,17 +48,39 @@ func New(ctx context.Context, authSecret string, authExpireInSeconds int) (*API,
 		accountRepo: models.NewAccountRepo(postgres),
 	}
 
-	// Defines routes
-	router.HandleFunc("/auth/token", api.createToken).Methods("GET")
-	router.HandleFunc("/accounts", api.createAccount).Methods("POST")
+	r.Group(func(r chi.Router) {
+		r.Use(jwtauth.Verifier(jwt.TokenAuth))
+		r.Use(jwtauth.Authenticator)
 
-	api.router = router
+		// TODO: add protected routes
+	})
+
+	// Defines routes
+	r.Route("/accounts", func(r chi.Router) {
+		r.Post("/", api.createAccount)
+
+		// /accounts/{id}
+		r.Route("/{id}", func(r chi.Router) {
+			r.Get("/", notImplemented)
+			r.Put("/", notImplemented)
+			r.Delete("/", notImplemented)
+		})
+	})
+
+	r.Post("/login", api.Login)
+
+	api.router = r
 
 	return api, nil
 }
 
 func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	a.router.ServeHTTP(w, r)
+}
+
+// notImplemented is a naive controller used to return a 501 response for routes in development.
+func notImplemented(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
 }
 
 func respondWithError(w http.ResponseWriter, code int, message string) {
