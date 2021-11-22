@@ -25,26 +25,21 @@ func New(jwtSett *JWTSettings, rdb *redis.Client) *Auth {
 	}
 }
 
-// GetTokens is used to generate a new token with the given email.
+// GetTokens is used to generate a new token with the given username.
 // The generated token is signed and then cached.
-func (a *Auth) GetToken(ctx context.Context, email string) (string, error) {
-	token := a.jwt.createJWT(email)
+func (a *Auth) GetToken(ctx context.Context, username string) (string, error) {
+	token := a.jwt.createJWT(username)
 	signed, err := a.jwt.sign(token)
 	if err != nil {
 		return "", errors.Annotatef(err, "sign token")
 	}
 
-	err = a.cacheToken(ctx, token.Email, signed)
+	err = a.cacheToken(ctx, username, signed)
 	if err != nil {
 		return "", errors.Annotatef(err, "cache token")
 	}
 
 	return "", err
-}
-
-// ParseToken parses the signed token.
-func (a *Auth) ParseToken(signedToken string) (*JWT, error) {
-	return a.jwt.parse(signedToken)
 }
 
 // DelToken delete the cached token corresponding to the given email address.

@@ -3,17 +3,10 @@ package auth
 import (
 	"time"
 
-	"github.com/golang-jwt/jwt/v4"
+	"github.com/go-chi/jwtauth/v5"
 	"github.com/google/uuid"
 	"github.com/juju/errors"
 )
-
-// JWT represents the structure of a generated token.
-type JWT struct {
-	// Email is the email of the user that owns the token.
-	Email string `json: "email"`
-	jwt.RegisteredClaims
-}
 
 // JWTSettings represents the common data used to create tokens.
 type JWTSettings struct {
@@ -26,60 +19,45 @@ type JWTSettings struct {
 	Subject string
 	// Audience `aud` identifies the recipients that the jwt is intended for.
 	Audience []string
-	// Key is the key used to sign the build jwt
-	Key []byte
+	// TokenAuth is an instance of JWTAuth used to describe the algorithm and the secret key
+	// used to sign a token (and verify its validity)
+	TokenAuth *jwtauth.JWTAuth
 }
 
+// Algorithm used to sign the token.
+const algorithm = "HS256"
+
 // NewJWTSettings creates new settings used to generate jwt.
-func NewJWTSettings(expiresInSeconds int, iss string, sub string, aud []string, key []byte) *JWTSettings {
+func NewJWTSettings(expiresInSeconds int, iss string, sub string, aud []string, signKey []byte, verifyKey []byte) *JWTSettings {
 	return &JWTSettings{
 		ExpiresInSeconds: expiresInSeconds,
 		Issuer:           iss,
 		Subject:          sub,
 		Audience:         aud,
-		Key:              key,
+		TokenAuth:        jwtauth.New(algorithm, signKey, verifyKey),
 	}
 }
 
-// createJWT creates a new jwt with the given email and settings.
-func (j *JWTSettings) createJWT(email string) JWT {
-	return JWT{
-		email,
-		jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Duration(j.ExpiresInSeconds) * time.Second)),
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			NotBefore: jwt.NewNumericDate(time.Now()),
-			Issuer:    j.Issuer,
-			Subject:   j.Subject,
-			ID:        uuid.NewString(),
-			Audience:  j.Audience,
-		},
+// createJWT creates a new jwt with the given username and settings.
+func (j *JWTSettings) createJWT(username string) map[string]interface{} {
+	return map[string]interface{}{
+		"username": username,
+		"exp":      time.Now().Add(time.Duration(j.ExpiresInSeconds) * time.Second).Unix(),
+		"iat":      time.Now().Unix(),
+		"nbf":      time.Now().Unix(),
+		"iss":      j.Issuer,
+		"sub":      j.Subject,
+		"jti":      uuid.NewString(),
+		"aud":      j.Audience,
 	}
 }
 
-// sign signs the given token and returns the signed token.
-func (j *JWTSettings) sign(jwtToSign JWT) (string, error) {
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwtToSign)
-	return token.SignedString(j.Key)
-}
-
-// parse parses the given signed token and returns a new struct containing the token data.
-func (j *JWTSettings) parse(signedToken string) (*JWT, error) {
-	token, err := jwt.ParseWithClaims(signedToken, &JWT{}, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, errors.Errorf("Unexpected signing method, got '%v', expected 'HMAC'", token.Header["alg"])
-		}
-
-		return j.Key, nil
-	})
-
+// sign signs the given token and returns the signed token as a ready-to-send string.
+func (j *JWTSettings) sign(jwtToSign map[string]interface{}) (string, error) {
+	_, tokenString, err := j.TokenAuth.Encode(jwtToSign)
 	if err != nil {
-		return nil, errors.Annotatef(err, "parse token:")
+		return "", errors.Annotatef(err, "sign token")
 	}
 
-	if claims, ok := token.Claims.(*JWT); ok && token.Valid {
-		return claims, nil
-	}
-
-	return nil, errors.Annotatef(err, "token not valid")
+	return tokenString, nil
 }
