@@ -32,12 +32,12 @@ func New(ctx context.Context, authSecret string, authExpireInSeconds int) (*API,
 
 	// Initializes dependencies
 	jwt := auth.NewJWTSettings(100, "myapp", "apiAuthentication", []string{"authenticatedUsers"}, []byte("mysecret"), []byte("myverify"))
-	redis, err := backend.NewRedis("127.0.0.1:6379", "", ctx)
+	redis, err := backend.NewRedis("redis:6379", "", ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	postgres, err := backend.NewPostgres(ctx, "postgres://postgres:postgres@localhost:5432/apiauth")
+	postgres, err := backend.NewPostgres(ctx, "postgres://postgres:postgres@postgres:5432/apiauth")
 	if err != nil {
 		return nil, err
 	}
@@ -52,20 +52,19 @@ func New(ctx context.Context, authSecret string, authExpireInSeconds int) (*API,
 		r.Use(jwtauth.Verifier(jwt.TokenAuth))
 		r.Use(jwtauth.Authenticator)
 
-		// TODO: add protected routes
+		r.Route("/accounts", func(r chi.Router) {
+			r.Post("/", api.createAccount)
+
+			// /accounts/{id}
+			r.Route("/{id}", func(r chi.Router) {
+				r.Get("/", notImplemented)
+				r.Put("/", notImplemented)
+				r.Delete("/", notImplemented)
+			})
+		})
 	})
 
 	// Defines routes
-	r.Route("/accounts", func(r chi.Router) {
-		r.Post("/", api.createAccount)
-
-		// /accounts/{id}
-		r.Route("/{id}", func(r chi.Router) {
-			r.Get("/", notImplemented)
-			r.Put("/", notImplemented)
-			r.Delete("/", notImplemented)
-		})
-	})
 
 	r.Post("/login", api.Login)
 

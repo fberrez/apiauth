@@ -8,6 +8,7 @@ import (
 
 type Account struct {
 	ID          int    `json: "id"`
+	Username    string `json: "username"`
 	Email       string `json: "email"`
 	Password    string `json: "password"`
 	ConnectedAt int    `json: "connectedAt"`
@@ -26,14 +27,14 @@ func NewAccountRepo(conn *pgx.Conn) *AccountRepo {
 }
 
 // Create builds and executes a sql query to create a new account
-func (u *AccountRepo) Create(ctx context.Context, email, password string, level int) error {
+func (u *AccountRepo) Create(ctx context.Context, username, password string, level int) error {
 	tx, err := u.conn.Begin(ctx)
 	if err != nil {
 		return err
 	}
 
 	defer tx.Rollback(ctx)
-	_, err = tx.Exec(ctx, "insert into accounts(email, password, level) values ($1, $2, $3)", email, password, level)
+	_, err = tx.Exec(ctx, "insert into accounts(username, password, level) values ($1, $2, $3)", username, password, level)
 	if err != nil {
 		return err
 	}

@@ -1,28 +1,60 @@
 package api
 
 import (
-	"context"
-	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
+	"strings"
+
+	"github.com/fberrez/apiauth/models"
+	"github.com/go-chi/render"
 )
 
-type accountIn struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
+type AccountIn struct {
+	Account *models.Account
+}
+
+type AccountOut struct {
+	Account *models.Account
 }
 
 func (a *API) createAccount(w http.ResponseWriter, r *http.Request) {
-	var acc accountIn
-	decoder := json.NewDecoder(r.Body)
-	if err := decoder.Decode(&acc); err != nil {
-		respondWithError(w, http.StatusBadRequest, "Invalid request payload")
+	data := &AccountIn{}
+	if err := render.Bind(r, data); err != nil {
+		render.Render(w, r, ErrBadRequest(err))
 		return
 	}
 
-	if err := a.accountRepo.Create(context.TODO(), acc.Email, acc.Password, 0); err != nil {
-		respondWithError(w, http.StatusBadRequest, "Invalid request payload")
-		return
+	account := data.Account
+	fmt.Printf("%#v\n", account)
+	render.Status(r, http.StatusCreated)
+	render.Render(w, r, NewAccountOut(account))
+}
+
+func (a *AccountIn) Bind(r *http.Request) error {
+	if a.Account == nil {
+		return errors.New("Missing Required Account Fields")
 	}
 
-	defer r.Body.Close()
+	a.Account.Username = strings.Trim(a.Account.Username, " ")
+	a.Account.Password = strings.Trim(a.Account.Password, " ")
+	if a.Account.Username == "" {
+		return errors.New("Missing Required Field: Username")
+	}
+
+	if a.Account.Password == "" {
+		return errors.New("Missing Required Field: Password")
+	}
+
+	return nil
+}
+
+func (a *AccountOut) Render(w http.ResponseWriter, r *http.Request) error {
+	return nil
+}
+
+// NewAccountOut creates a new instance of AccountOut, used as api response.
+func NewAccountOut(account *models.Account) *AccountOut {
+	resp := &AccountOut{Account: account}
+	return resp
 }
